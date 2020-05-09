@@ -65,7 +65,7 @@ namespace V3Indexer
                     stopwatch.Elapsed.TotalMinutes);
 
                 _logger.LogInformation("Sleeping...");
-                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+                await Task.Delay(TimeSpan.FromMinutes(30), cancellationToken);
             }
         }
 

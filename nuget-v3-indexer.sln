@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26124.0
 MinimumVisualStudioVersion = 15.0.26124.0
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "V3Indexer", "V3Indexer.csproj", "{DCCA5AF7-AC9B-4E4C-B2E6-A9CFB9A00CEC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "V3Indexer", "src\V3Indexer\V3Indexer.csproj", "{DCCA5AF7-AC9B-4E4C-B2E6-A9CFB9A00CEC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
