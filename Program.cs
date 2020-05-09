@@ -111,7 +111,7 @@ namespace V3Indexer
             var enqueued = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             var producerTasks = Enumerable
-                .Repeat(0, Math.Min(16, pages.Count))
+                .Repeat(0, Math.Min(32, pages.Count))
                 .Select(async _ =>
                 {
                     await Task.Yield();
@@ -123,14 +123,19 @@ namespace V3Indexer
                         {
                             try
                             {
-                                _logger.LogInformation("Processing catalog page {PageUrl}...", pageItem.CatalogPageUrl);
-
+                                //_logger.LogInformation("Processing catalog page {PageUrl}...", pageItem.CatalogPageUrl);
                                 var page = await client.GetPageAsync(pageItem.CatalogPageUrl, cancellationToken);
-                                var leaves = page.GetLeavesInBounds(minCursor, maxCursor, excludeRedundantLeaves: true);
 
-                                foreach (var leaf in leaves)
+                                foreach (var leaf in page.Items)
                                 {
-                                    if (enqueued.TryAdd(leaf.PackageId, value: null))
+                                    // Don't process leaves that are not within the cursors.
+                                    if (leaf.CommitTimestamp <= minCursor) continue;
+                                    if (leaf.CommitTimestamp > maxCursor) continue;
+
+                                    // Don't reprocess an ID we've already seen.
+                                    if (!enqueued.TryAdd(leaf.PackageId, value: null)) continue;
+
+                                    if (!queue.TryWrite(leaf.PackageId))
                                     {
                                         await queue.WriteAsync(leaf.PackageId, cancellationToken);
                                     }
@@ -166,7 +171,7 @@ namespace V3Indexer
                     {
                         while (queue.TryRead(out var packageId))
                         {
-                            _logger.LogInformation("Processing {PackageId}...", packageId);
+                            //_logger.LogInformation("Processing {PackageId}...", packageId);
                         }
                     }
                 });
