@@ -42,10 +42,9 @@ namespace V3Indexer
             services.AddHttpClient();
             services.AddSingleton(provider =>
             {
-                //var factory = provider.GetRequiredService<IHttpClientFactory>();
-                //var httpClient = factory.CreateClient("NuGet");
+                var factory = provider.GetRequiredService<IHttpClientFactory>();
+                var httpClient = factory.CreateClient("NuGet");
 
-                var httpClient = new HttpClient();
                 var serviceIndex = "https://api.nuget.org/v3/index.json";
 
                 return new NuGetClientFactory(httpClient, serviceIndex);
