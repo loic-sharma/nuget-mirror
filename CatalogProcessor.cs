@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using BaGet.Protocol.Models;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace V3Indexer
 {
@@ -14,18 +15,24 @@ namespace V3Indexer
     {
         private readonly CatalogLeafItemProducer _processor;
         private readonly PackageIdWorker _worker;
+        private readonly IOptionsSnapshot<V3IndexerOptions> _options;
         private readonly ILogger<CatalogProcessor> _logger;
 
-        public CatalogProcessor(CatalogLeafItemProducer processor, PackageIdWorker worker, ILogger<CatalogProcessor> logger)
+        public CatalogProcessor(
+            CatalogLeafItemProducer processor,
+            PackageIdWorker worker,
+            IOptionsSnapshot<V3IndexerOptions> options,
+            ILogger<CatalogProcessor> logger)
         {
             _processor = processor;
             _worker = worker;
+            _options = options;
             _logger = logger;
         }
 
         protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            var cursor = DateTimeOffset.MinValue;
+            var cursor = _options.Value.DefaultMinCursor;
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -45,14 +52,9 @@ namespace V3Indexer
                         SingleReader = false,
                     });
 
-                var producerOptions = new CatalogLeafItemProducerOptions();
-                var workerOptions = new PackageIdWorkerOptions();
-
-                producerOptions.MinCursor = cursor;
-
-                var producerTask = _processor.ProduceAsync(leafChannel.Writer, producerOptions, cancellationToken);
+                var producerTask = _processor.ProduceAsync(leafChannel.Writer, cursor, cancellationToken);
                 var mapTask = MapLeavesToIdsAsync(leafChannel.Reader, packageIdChannel.Writer, cancellationToken);
-                var workerTask = _worker.WorkAsync(packageIdChannel.Reader, workerOptions, cancellationToken);
+                var workerTask = _worker.WorkAsync(packageIdChannel.Reader, cancellationToken);
 
                 await Task.WhenAll(producerTask, mapTask, workerTask);
 

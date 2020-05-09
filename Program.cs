@@ -33,8 +33,10 @@ namespace V3Indexer
             }
         }
 
-        private static void ConfigureService(IServiceCollection services)
+        private static void ConfigureService(HostBuilderContext ctx, IServiceCollection services)
         {
+            services.Configure<V3IndexerOptions>(ctx.Configuration.GetSection("V3Indexer"));
+
             services
                 .AddHttpClient("NuGet")
                 .ConfigurePrimaryHttpMessageHandler(handler =>

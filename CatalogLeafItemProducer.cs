@@ -7,29 +7,29 @@ using System.Threading.Tasks;
 using BaGet.Protocol;
 using BaGet.Protocol.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace V3Indexer
 {
-    public class CatalogLeafItemProducerOptions
-    {
-        public DateTimeOffset MinCursor { get; set; } = DateTimeOffset.MinValue;
-        public int Workers { get; }  = 32;
-    }
-
     public class CatalogLeafItemProducer
     {
         private readonly NuGetClientFactory _factory;
+        private readonly IOptionsSnapshot<V3IndexerOptions> _options;
         private readonly ILogger<CatalogLeafItemProducer> _logger;
 
-        public CatalogLeafItemProducer(NuGetClientFactory factory, ILogger<CatalogLeafItemProducer> logger)
+        public CatalogLeafItemProducer(
+            NuGetClientFactory factory,
+            IOptionsSnapshot<V3IndexerOptions> options,
+            ILogger<CatalogLeafItemProducer> logger)
         {
             _factory = factory;
+            _options = options;
             _logger = logger;
         }
 
         public async Task<DateTimeOffset> ProduceAsync(
             ChannelWriter<CatalogLeafItem> channel,
-            CatalogLeafItemProducerOptions options,
+            DateTimeOffset minCursor,
             CancellationToken cancellationToken)
         {
             _logger.LogInformation("Fetching catalog index...");
@@ -37,18 +37,24 @@ namespace V3Indexer
             var catalogIndex = await client.GetIndexAsync(cancellationToken);
 
             var maxCursor = catalogIndex.CommitTimestamp;
-            var pages = catalogIndex.GetPagesInBounds(options.MinCursor, maxCursor);
+            var pages = catalogIndex.GetPagesInBounds(minCursor, maxCursor);
 
-            if (!pages.Any() || options.MinCursor == maxCursor)
+            if (!pages.Any() || minCursor == maxCursor)
             {
                 _logger.LogInformation("No pending leaf items on the catalog.");
                 channel.Complete();
                 return maxCursor;
             }
 
+            _logger.LogInformation(
+                "Fetching {Pages} catalog pages from time {MinCursor} to {MaxCursor}...",
+                pages.Count,
+                minCursor,
+                maxCursor);
+
             var work = new ConcurrentBag<CatalogPageItem>(pages);
             var tasks = Enumerable
-                .Repeat(0, Math.Min(options.Workers, pages.Count))
+                .Repeat(0, Math.Min(_options.Value.ProducerWorkers, pages.Count))
                 .Select(async _ =>
                 {
                     await Task.Yield();
@@ -66,7 +72,7 @@ namespace V3Indexer
                                 foreach (var leaf in page.Items)
                                 {
                                     // Don't process leaves that are not within the cursors.
-                                    if (leaf.CommitTimestamp <= options.MinCursor) continue;
+                                    if (leaf.CommitTimestamp <= minCursor) continue;
                                     if (leaf.CommitTimestamp > maxCursor) continue;
 
                                     if (!channel.TryWrite(leaf))
