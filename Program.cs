@@ -39,7 +39,16 @@ namespace V3Indexer
 
         private static void ConfigureService(IServiceCollection services)
         {
-            services.AddHttpClient();
+            services
+                .AddHttpClient("NuGet")
+                .ConfigurePrimaryHttpMessageHandler(handler =>
+                {
+                    return new HttpClientHandler
+                    {
+                        AutomaticDecompression = DecompressionMethods.Deflate | DecompressionMethods.GZip
+                    };
+                });
+
             services.AddSingleton(provider =>
             {
                 var factory = provider.GetRequiredService<IHttpClientFactory>();
@@ -94,7 +103,7 @@ namespace V3Indexer
                     stopwatch.Elapsed.TotalMinutes);
 
                 _logger.LogInformation("Sleeping...");
-                await Task.Delay(TimeSpan.FromSeconds(30));
+                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
             }
         }
 
@@ -130,7 +139,7 @@ namespace V3Indexer
                 maxCursor);
 
             var producerTasks = Enumerable
-                .Repeat(0, Math.Min(32, pages.Count))
+                .Repeat(0, Math.Min(16, pages.Count))
                 .Select(async _ =>
                 {
                     await Task.Yield();
@@ -165,7 +174,7 @@ namespace V3Indexer
                             catch (Exception e) when (!cancellationToken.IsCancellationRequested)
                             {
                                 _logger.LogError(e, "Retrying catalog page {PageUrl} in 5 seconds...", pageItem.CatalogPageUrl);
-                                await Task.Delay(TimeSpan.FromSeconds(5));
+                                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                             }
                         }
                     }
@@ -181,8 +190,12 @@ namespace V3Indexer
 
         private async Task ConsumeWorkAsync(ChannelReader<string> queue, CancellationToken cancellationToken)
         {
+            var client = _factory.CreatePackageMetadataClient();
+
+            _logger.LogInformation("Processing packages...");
+
             var consumerTasks = Enumerable
-                .Repeat(0, 16)
+                .Repeat(0, 32)
                 .Select(async _ =>
                 {
                     await Task.Yield();
@@ -191,12 +204,27 @@ namespace V3Indexer
                     {
                         while (queue.TryRead(out var packageId))
                         {
-                            //_logger.LogInformation("Processing {PackageId}...", packageId);
+                            var index = await client.GetRegistrationIndexOrNullAsync(packageId, cancellationToken);
+                            if (index == null)
+                            {
+                                _logger.LogWarning("Package {PackageId} has been deleted.", packageId);
+                                continue;
+                            }
+
+                            foreach (var pageItem in index.Pages)
+                            {
+                                if (pageItem.ItemsOrNull == null)
+                                {
+                                    var page = await client.GetRegistrationPageAsync(pageItem.RegistrationPageUrl);
+                                }
+                            }
                         }
                     }
                 });
 
             await Task.WhenAll(consumerTasks);
+
+            _logger.LogInformation("Done processing packages.");
         }
     }
 
