@@ -90,7 +90,6 @@ namespace V3Indexer
 
                 _logger.LogInformation("Sleeping...");
                 await Task.Delay(TimeSpan.FromSeconds(30));
-                break;
             }
         }
 
@@ -154,6 +153,7 @@ namespace V3Indexer
 
             await Task.WhenAll(producerTasks);
 
+            _logger.LogInformation("Fetched catalog pages up to cursor {Cursor}", maxCursor);
             queue.Complete();
 
             return maxCursor;
