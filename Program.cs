@@ -64,7 +64,7 @@ namespace V3Indexer
 
         protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            var minCursor = DateTimeOffset.MinValue;
+            var cursor = DateTimeOffset.MinValue;
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -77,19 +77,27 @@ namespace V3Indexer
                         SingleReader = false,
                     });
 
-                var producer = ProduceWorkAsync(minCursor, queue.Writer, cancellationToken);
+                var producer = ProduceWorkAsync(cursor, queue.Writer, cancellationToken);
                 var consumer = ConsumeWorkAsync(queue.Reader, cancellationToken);
 
                 await Task.WhenAll(producer, consumer);
 
-                _logger.LogInformation("Process catalog in {DurationMinutes} minutes.", stopwatch.Elapsed.TotalMinutes);
+                cursor = producer.Result;
+                _logger.LogInformation(
+                    "Processed catalog up to {Cursor} in {DurationMinutes} minutes.",
+                    cursor,
+                    stopwatch.Elapsed.TotalMinutes);
 
                 _logger.LogInformation("Sleeping...");
                 await Task.Delay(TimeSpan.FromSeconds(30));
+                break;
             }
         }
 
-        private async Task ProduceWorkAsync(DateTimeOffset minCursor, ChannelWriter<string> queue, CancellationToken cancellationToken)
+        private async Task<DateTimeOffset> ProduceWorkAsync(
+            DateTimeOffset minCursor,
+            ChannelWriter<string> queue,
+            CancellationToken cancellationToken)
         {
             await Task.Yield();
 
@@ -103,7 +111,7 @@ namespace V3Indexer
             var enqueued = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             var producerTasks = Enumerable
-                .Repeat(0, Math.Max(4, pages.Count))
+                .Repeat(0, Math.Min(16, pages.Count))
                 .Select(async _ =>
                 {
                     await Task.Yield();
@@ -130,19 +138,20 @@ namespace V3Indexer
 
                                 done = true;
                             }
-                            catch (Exception e)
+                            catch (Exception e) when (!cancellationToken.IsCancellationRequested)
                             {
-                                // TODO: Retry
-                                _logger.LogError(e, "Unable to process catalog page {PageUrl}.", pageItem.CatalogPageUrl);
+                                _logger.LogError(e, "Retrying catalog page {PageUrl} in 5 seconds...", pageItem.CatalogPageUrl);
                                 await Task.Delay(TimeSpan.FromSeconds(5));
                             }
                         }
                     }
-
-                    queue.TryComplete();
                 });
 
             await Task.WhenAll(producerTasks);
+
+            queue.Complete();
+
+            return maxCursor;
         }
 
         private async Task ConsumeWorkAsync(ChannelReader<string> queue, CancellationToken cancellationToken)
