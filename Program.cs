@@ -26,9 +26,15 @@ namespace V3Indexer
 
             var hostBuilder = Host.CreateDefaultBuilder(args);
 
-            await hostBuilder
-                .ConfigureServices(ConfigureService)
-                .RunConsoleAsync();
+            try
+            {
+                await hostBuilder
+                    .ConfigureServices(ConfigureService)
+                    .RunConsoleAsync();
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         private static void ConfigureService(IServiceCollection services)
@@ -100,14 +106,29 @@ namespace V3Indexer
         {
             await Task.Yield();
 
+            _logger.LogInformation("Fetching catalog index...");
             var client = _factory.CreateCatalogClient();
             var catalogIndex = await client.GetIndexAsync(cancellationToken);
 
             var maxCursor = catalogIndex.CommitTimestamp;
             var pages = catalogIndex.GetPagesInBounds(minCursor, maxCursor);
 
+            if (!pages.Any() || minCursor == maxCursor)
+            {
+                _logger.LogInformation("No pending work on the catalog.");
+                queue.Complete();
+
+                return maxCursor;
+            }
+
             var work = new ConcurrentBag<CatalogPageItem>(pages);
             var enqueued = new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+            _logger.LogInformation(
+                "Fetching {Pages} catalog pages from time {MinCursor} to {MaxCursor}...",
+                pages.Count,
+                minCursor,
+                maxCursor);
 
             var producerTasks = Enumerable
                 .Repeat(0, Math.Min(32, pages.Count))
