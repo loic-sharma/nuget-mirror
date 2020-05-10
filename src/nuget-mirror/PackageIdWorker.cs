@@ -11,18 +11,18 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 
-namespace V3Indexer
+namespace Mirror
 {
     public class PackageIdWorker
     {
         private readonly NuGetClientFactory _factory;
         private readonly JsonSerializer _json;
-        private readonly IOptionsSnapshot<V3IndexerOptions> _options;
+        private readonly IOptionsSnapshot<MirrorOptions> _options;
         private readonly ILogger<PackageIdWorker> _logger;
 
         public PackageIdWorker(
             NuGetClientFactory factory,
-            IOptionsSnapshot<V3IndexerOptions> options,
+            IOptionsSnapshot<MirrorOptions> options,
             ILogger<PackageIdWorker> logger)
         {
             _factory = factory;
@@ -38,7 +38,7 @@ namespace V3Indexer
             var client = _factory.CreatePackageMetadataClient();
 
             // TODO: This should wait until registration has caught up to the catalog cursor.
-            _logger.LogInformation("Processing packages...");
+            _logger.LogInformation("Indexing package data to path {IndexPath}...", _options.Value.IndexPath);
 
             var tasks = Enumerable
                 .Repeat(0, _options.Value.ConsumerWorkers)

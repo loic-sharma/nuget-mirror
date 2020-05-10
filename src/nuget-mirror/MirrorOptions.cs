@@ -1,8 +1,8 @@
 ﻿using System;
 
-namespace V3Indexer
+namespace Mirror
 {
-    public class V3IndexerOptions
+    public class MirrorOptions
     {
         public string IndexPath { get; set; }
 

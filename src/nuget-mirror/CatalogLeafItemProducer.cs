@@ -9,17 +9,17 @@ using BaGet.Protocol.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace V3Indexer
+namespace Mirror
 {
     public class CatalogLeafItemProducer
     {
         private readonly NuGetClientFactory _factory;
-        private readonly IOptionsSnapshot<V3IndexerOptions> _options;
+        private readonly IOptionsSnapshot<MirrorOptions> _options;
         private readonly ILogger<CatalogLeafItemProducer> _logger;
 
         public CatalogLeafItemProducer(
             NuGetClientFactory factory,
-            IOptionsSnapshot<V3IndexerOptions> options,
+            IOptionsSnapshot<MirrorOptions> options,
             ILogger<CatalogLeafItemProducer> logger)
         {
             _factory = factory;

@@ -9,19 +9,19 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace V3Indexer
+namespace Mirror
 {
     public class CatalogProcessor : BackgroundService
     {
         private readonly CatalogLeafItemProducer _processor;
         private readonly PackageIdWorker _worker;
-        private readonly IOptionsSnapshot<V3IndexerOptions> _options;
+        private readonly IOptionsSnapshot<MirrorOptions> _options;
         private readonly ILogger<CatalogProcessor> _logger;
 
         public CatalogProcessor(
             CatalogLeafItemProducer processor,
             PackageIdWorker worker,
-            IOptionsSnapshot<V3IndexerOptions> options,
+            IOptionsSnapshot<MirrorOptions> options,
             ILogger<CatalogProcessor> logger)
         {
             _processor = processor;

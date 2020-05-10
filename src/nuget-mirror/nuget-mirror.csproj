@@ -3,13 +3,16 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>nuget-mirror</ToolCommandName>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="BaGet.Protocol" Version="0.3.0-preview3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.1.3" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="3.1.3" />
-    <PackageReference Include="NuGet.Packaging" Version="5.4.0" />
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta1.20253.1" />
     <PackageReference Include="System.Threading.Channels" Version="4.7.0" />
   </ItemGroup>
 
