@@ -28,7 +28,7 @@ namespace Mirror
                 Description = "The directory to store NuGet package metadata.",
             });
 
-            command.Handler = CommandHandler.Create<FileInfo>(async path =>
+            command.Handler = CommandHandler.Create<DirectoryInfo>(async path =>
             {
                 // TODO: RegistrationLeaf should be a URL
                 // TODO: NuGetClientFactory should accept a function to create the httpclient
