@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -13,17 +13,17 @@ using Newtonsoft.Json;
 
 namespace Mirror
 {
-    public class PackageIdWorker
+    public class PackageMetadataWorker
     {
         private readonly NuGetClientFactory _factory;
         private readonly JsonSerializer _json;
         private readonly IOptionsSnapshot<MirrorOptions> _options;
-        private readonly ILogger<PackageIdWorker> _logger;
+        private readonly ILogger<PackageMetadataWorker> _logger;
 
-        public PackageIdWorker(
+        public PackageMetadataWorker(
             NuGetClientFactory factory,
             IOptionsSnapshot<MirrorOptions> options,
-            ILogger<PackageIdWorker> logger)
+            ILogger<PackageMetadataWorker> logger)
         {
             _factory = factory;
             _json = new JsonSerializer();
@@ -32,13 +32,18 @@ namespace Mirror
         }
 
         public async Task WorkAsync(
-            ChannelReader<string> channel,
+            ChannelReader<string> packageIdReader,
             CancellationToken cancellationToken)
         {
             var client = _factory.CreatePackageMetadataClient();
+            var metadataPath = Path.Combine(_options.Value.IndexPath, "metadata");
 
-            // TODO: This should wait until registration has caught up to the catalog cursor.
-            _logger.LogInformation("Indexing package data to path {IndexPath}...", _options.Value.IndexPath);
+            _logger.LogInformation(
+                "Indexing package metadata to path {MetadataPath} using {ConsumerWorkers} workers...",
+                metadataPath,
+                _options.Value.ConsumerWorkers);
+
+            Directory.CreateDirectory(metadataPath);
 
             var tasks = Enumerable
                 .Repeat(0, _options.Value.ConsumerWorkers)
@@ -46,37 +51,43 @@ namespace Mirror
                 {
                     await Task.Yield();
 
-                    while (await channel.WaitToReadAsync(cancellationToken))
+                    while (await packageIdReader.WaitToReadAsync(cancellationToken))
                     {
-                        while (channel.TryRead(out var packageId))
+                        while (packageIdReader.TryRead(out var packageId))
                         {
-                            _logger.LogDebug("Processing package {PackageId}", packageId);
-
-                            var path = Path.Combine(_options.Value.IndexPath, packageId.ToLowerInvariant() + ".json");
-
-                            var index = await GetInlinedRegistrationIndexOrNullAsync(client, packageId, cancellationToken);
-                            if (index == null)
+                            var done = false;
+                            while (!done)
                             {
-                                if (File.Exists(path))
+                                try
                                 {
-                                    File.Delete(path);
+                                    _logger.LogDebug("Processing package {PackageId}...", packageId);
+
+                                    var path = Path.Combine(metadataPath, packageId.ToLowerInvariant() + ".json");
+
+                                    var index = await GetInlinedRegistrationIndexOrNullAsync(client, packageId, cancellationToken);
+
+                                    using var filestream = new FileStream(path, FileMode.Create);
+                                    using var writer = new StreamWriter(filestream);
+
+                                    _json.Serialize(writer, index);
+                                    done = true;
+
+                                    _logger.LogDebug("Processed package {PackageId}", packageId);
+                                }
+                                catch (Exception e) when (!cancellationToken.IsCancellationRequested)
+                                {
+                                    _logger.LogError(e, "Retrying package {PackageId} in 5 seconds...", packageId);
+                                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                                 }
                             }
 
-                            using var filestream = new FileStream(path, FileMode.Create);
-                            using var compressedStream = new GZipStream(filestream, CompressionMode.Compress);
-                            using var writer = new StreamWriter(compressedStream);
-
-                            _json.Serialize(writer, index);
-
-                            _logger.LogDebug("Processed package {PackageId}", packageId);
                         }
                     }
                 });
 
             await Task.WhenAll(tasks);
 
-            _logger.LogInformation("Done processing packages.");
+            _logger.LogInformation("Done processing package metadata.");
         }
 
         private async Task<RegistrationIndexResponse> GetInlinedRegistrationIndexOrNullAsync(

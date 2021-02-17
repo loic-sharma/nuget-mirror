@@ -30,31 +30,38 @@ namespace Mirror
         public async Task<DateTimeOffset> ProduceAsync(
             ChannelWriter<CatalogLeafItem> channel,
             DateTimeOffset minCursor,
+            DateTimeOffset maxCursor,
             CancellationToken cancellationToken)
         {
             _logger.LogInformation("Fetching catalog index...");
             var client = _factory.CreateCatalogClient();
             var catalogIndex = await client.GetIndexAsync(cancellationToken);
 
-            var maxCursor = catalogIndex.CommitTimestamp;
             var pages = catalogIndex.GetPagesInBounds(minCursor, maxCursor);
+
+            var maxPages = _options.Value.MaxPages;
+            if (maxPages.HasValue)
+            {
+                pages = pages.Take(maxPages.Value).ToList();
+            }
 
             if (!pages.Any() || minCursor == maxCursor)
             {
                 _logger.LogInformation("No pending leaf items on the catalog.");
                 channel.Complete();
-                return maxCursor;
+                return minCursor;
             }
 
-            _logger.LogInformation(
-                "Fetching {Pages} catalog pages from time {MinCursor} to {MaxCursor}...",
-                pages.Count,
-                minCursor,
-                maxCursor);
-
             var work = new ConcurrentBag<CatalogPageItem>(pages);
+            var workers = Math.Min(_options.Value.ProducerWorkers, pages.Count);
+
+            _logger.LogInformation(
+                "Fetching {Pages} catalog pages using {ProducerWorkers} workers...",
+                pages.Count,
+                workers);
+
             var tasks = Enumerable
-                .Repeat(0, Math.Min(_options.Value.ProducerWorkers, pages.Count))
+                .Repeat(0, workers)
                 .Select(async _ =>
                 {
                     await Task.Yield();
@@ -95,9 +102,11 @@ namespace Mirror
 
             await Task.WhenAll(tasks);
 
-            _logger.LogInformation("Fetched catalog pages up to cursor {Cursor}", maxCursor);
+            var cursor = pages.Last().CommitTimestamp;
+            _logger.LogInformation("Fetched catalog pages up to cursor {Cursor}", cursor);
             channel.Complete();
-            return maxCursor;
+
+            return cursor;
         }
     }
 }

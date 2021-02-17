@@ -9,8 +9,11 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using BaGet.Protocol;
+using BaGet.Protocol.Catalog;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Mirror
 {
@@ -30,7 +33,6 @@ namespace Mirror
 
             command.Handler = CommandHandler.Create<DirectoryInfo>(async path =>
             {
-                // TODO: RegistrationLeaf should be a URL
                 // TODO: NuGetClientFactory should accept a function to create the httpclient
                 // TODO: NuGetClientFactory should have an interface.
                 ThreadPool.SetMinThreads(workerThreads: 32, completionPortThreads: 4);
@@ -84,10 +86,21 @@ namespace Mirror
                 return new NuGetClientFactory(httpClient, serviceIndex);
             });
 
-            services.AddSingleton<CatalogLeafItemProducer>();
-            services.AddSingleton<PackageIdWorker>();
+            services.AddSingleton<ICursor>(provider =>
+            {
+                var options = provider.GetRequiredService<IOptionsSnapshot<MirrorOptions>>();
+                var logger = provider.GetRequiredService<ILogger<FileCursor>>();
 
-            services.AddHostedService<CatalogProcessor>();
+                var path = Path.Combine(options.Value.IndexPath, "cursor.json");
+
+                return new FileCursor(path, logger);
+            });
+
+            services.AddSingleton<CatalogLeafItemProducer>();
+            services.AddSingleton<PackageMetadataWorker>();
+            services.AddHttpClient<PackageMetadataCursor>();
+
+            services.AddHostedService<MirrorService>();
         }
     }
 }
